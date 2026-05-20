@@ -167,5 +167,6 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                     },
                 )
                 st.toast("Tartalom mentve!")
+                st.rerun()
         else:
             st.form_submit_button("Mentés", disabled=True)
