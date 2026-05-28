@@ -247,7 +247,7 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
 
     st.markdown("#### Kalkuláció – Szemiotika / Feldolgozás")
     st.caption(
-        "Minden paraméter alapértéke 1, írd felül a tényleges értékekkel. "
+        "Minden paraméter alapértéke 0, írd felül a tényleges értékekkel. "
         "A „Feldolgozási alap” és a jobb oldali munkaóra-értékek "
         "automatikusan számolódnak."
     )
@@ -264,11 +264,11 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
 
     values: dict = st.session_state[state_key]
 
-    # Új ajánlatnál minden paraméter 1-es alapértékkel induljon
+    # Új ajánlatnál minden paraméter 0-as alapértékkel induljon
     # (a felhasználó később felül tudja írni).
     for key, _, _, vtype in FELDOLGOZAS_PARAMS:
         if values.get(key) is None:
-            values[key] = 1 if vtype == "int" else 1.0
+            values[key] = 0 if vtype == "int" else 0.0
 
     # ── Két oszlop: bal = widgetek (1/3 szélesség), jobb = munkaóra panel ──
     left_col, right_col = st.columns([1, 2])
@@ -290,7 +290,7 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
                         f"{idx + 1}. {label} ({unit})",
                         min_value=0,
                         step=1,
-                        value=int(current) if current is not None else 1,
+                        value=int(current) if current is not None else 0,
                         key=widget_key,
                         disabled=not is_editable,
                         help=help_txt,
@@ -300,7 +300,7 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
                         f"{idx + 1}. {label} ({unit})",
                         min_value=0.0,
                         step=0.5,
-                        value=float(current) if current is not None else 1.0,
+                        value=float(current) if current is not None else 0.0,
                         key=widget_key,
                         disabled=not is_editable,
                         help=help_txt,

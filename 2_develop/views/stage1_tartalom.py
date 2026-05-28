@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from db import crud
@@ -19,7 +19,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
     # Pre-fill értékek
     t = tartalom  # rövidítés
 
-    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika"]
+    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitatív"]
     CELCSOPORT_OPTIONS = ["Lakossági", "Egyéb"]
 
     st.caption(
@@ -31,6 +31,12 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
 
         # ── Önálló alapparaméterek ──────────────────────────────────────────
         saved_kutatas_tipusa = t.kutatas_tipusa if t else None
+        saved_celcsoport = t.celcsoport if t else None
+        # Ha egyszer mentve lettek, a kalkuláció ezekhez van kötve,
+        # ezért utólag már nem szerkeszthetők.
+        kutatas_tipusa_locked = bool(saved_kutatas_tipusa)
+        celcsoport_locked = bool(saved_celcsoport)
+
         kutatas_tipusa_idx = (
             KUTATAS_TIPUSA_OPTIONS.index(saved_kutatas_tipusa)
             if saved_kutatas_tipusa in KUTATAS_TIPUSA_OPTIONS
@@ -42,10 +48,13 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
             KUTATAS_TIPUSA_OPTIONS,
             index=kutatas_tipusa_idx,
             placeholder="Válassz kutatástípust…",
-            disabled=not is_editable,
-            help="Kötelező mező – ez határozza meg, melyik kalkulációs sablon töltődik be.",
+            disabled=(not is_editable) or kutatas_tipusa_locked,
+            help=(
+                "Mentés után már nem módosítható, mert a kalkuláció ehhez van kötve."
+                if kutatas_tipusa_locked
+                else "Kötelező mező – ez határozza meg, melyik kalkulációs sablon töltődik be."
+            ),
         )
-        saved_celcsoport = t.celcsoport if t else None
         celcsoport_idx = (
             CELCSOPORT_OPTIONS.index(saved_celcsoport)
             if saved_celcsoport in CELCSOPORT_OPTIONS
@@ -56,9 +65,18 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
             CELCSOPORT_OPTIONS,
             index=celcsoport_idx,
             placeholder="Válassz célcsoportot…",
-            disabled=not is_editable,
-            help="Kötelező mező – a kalkulált munkaórák ettől függnek (Executive vs. Szenior sor).",
+            disabled=(not is_editable) or celcsoport_locked,
+            help=(
+                "Mentés után már nem módosítható, mert a kalkuláció ehhez van kötve."
+                if celcsoport_locked
+                else "Kötelező mező – a kalkulált munkaórák ettől függnek (Executive vs. Szenior sor)."
+            ),
         )
+        # Letiltott mezőknél a Streamlit None-t ad vissza – használjuk a mentett értéket.
+        if kutatas_tipusa_locked:
+            kutatas_tipusa = saved_kutatas_tipusa
+        if celcsoport_locked:
+            celcsoport = saved_celcsoport
 
         # ── 1. Háttér és cél ────────────────────────────────────────────────
         with st.expander("1. Háttér és cél", expanded=True):
@@ -94,13 +112,6 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                 disabled=not is_editable,
                 placeholder="Pl. szemiotikai elemzés, fókuszcsoportok, mélyinterjúk...",
             )
-            kulsos_alvallalkozo = st.text_area(
-                "Külsős alvállalkozó",
-                value=t.kulsos_alvallalkozo or "" if t else "",
-                height=60,
-                disabled=not is_editable,
-                placeholder="Ha szükséges, a bevonandó alvállalkozó neve / köre.",
-            )
             fobb_lepesek = st.text_area(
                 "Főbb lépések",
                 value=t.fobb_lepesek or "" if t else "",
@@ -112,11 +123,13 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
 
         # ── 3. Időkeret ──────────────────────────────────────────────────────
         with st.expander("3. Időkeret", expanded=False):
-            kutatas_idotartama = st.text_input(
-                "Kutatás időtartama",
-                value=t.kutatas_idotartama or "" if t else "",
+            ajanlat_elbiralasa = st.date_input(
+                "Az ajánlat elbírálásának várható időpontja",
+                value=(
+                    t.ajanlat_elbiralasa if t and t.ajanlat_elbiralasa else date.today()
+                ),
                 disabled=not is_editable,
-                placeholder="Pl. 4-6 hét",
+                format="YYYY.MM.DD",
             )
             col1, col2 = st.columns(2)
             tervezett_indulas = col1.date_input(
@@ -125,24 +138,22 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                     t.tervezett_indulas if t and t.tervezett_indulas else date.today()
                 ),
                 disabled=not is_editable,
+                format="YYYY.MM.DD",
+            )
+            # A várható befejezés nem lehet korábbi, mint tervezett indulás + 1 nap.
+            befejezes_min = tervezett_indulas + timedelta(days=1)
+            saved_befejezes = t.varhato_befejezes if t and t.varhato_befejezes else None
+            befejezes_value = (
+                saved_befejezes
+                if saved_befejezes and saved_befejezes >= befejezes_min
+                else befejezes_min
             )
             varhato_befejezes = col2.date_input(
                 "Várható befejezés",
-                value=(
-                    t.varhato_befejezes if t and t.varhato_befejezes else date.today()
-                ),
+                value=befejezes_value,
+                min_value=befejezes_min,
                 disabled=not is_editable,
-            )
-
-        # ── 4. Várt eredmények ───────────────────────────────────────────────
-        with st.expander("4. Várt eredmények", expanded=False):
-            vart_eredmenyek = st.text_area(
-                "Várt eredmények",
-                value=t.vart_eredmenyek or "" if t else "",
-                height=120,
-                disabled=not is_editable,
-                help="Soronként egy eredményt adj meg.",
-                placeholder="- Átfogó szemiotikai térkép...\n- Fogyasztói visszacsatolások...",
+                format="YYYY.MM.DD",
             )
 
         if is_editable:
@@ -158,12 +169,10 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                         "kutatasi_kerdesek": kutatasi_kerdesek,
                         "elemzendo_anyagok": elemzendo_anyagok,
                         "kutatasi_eszkozok": kutatasi_eszkozok,
-                        "kulsos_alvallalkozo": kulsos_alvallalkozo,
                         "fobb_lepesek": fobb_lepesek,
-                        "kutatas_idotartama": kutatas_idotartama,
+                        "ajanlat_elbiralasa": ajanlat_elbiralasa,
                         "tervezett_indulas": tervezett_indulas,
                         "varhato_befejezes": varhato_befejezes,
-                        "vart_eredmenyek": vart_eredmenyek,
                     },
                 )
                 st.toast("Tartalom mentve!")

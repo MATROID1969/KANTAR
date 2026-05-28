@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from db import crud
 from views.stage1_kalkulacio_szemiotika import render_stage1_kalkulacio_szemiotika
+from views.stage1_kalkulacio_kvalitativ import render_stage1_kalkulacio_kvalitativ
 
 
 def render_stage1_kalkulacio(offer_id: int, is_editable: bool, db: Session):
@@ -16,6 +17,8 @@ def render_stage1_kalkulacio(offer_id: int, is_editable: bool, db: Session):
 
     if kutatas_tipusa == "Szemiotika":
         render_stage1_kalkulacio_szemiotika(offer_id, is_editable, db)
+    elif kutatas_tipusa == "Kvalitatív":
+        render_stage1_kalkulacio_kvalitativ(offer_id, is_editable, db)
     else:
         st.warning(
             f"A(z) „{kutatas_tipusa}” kutatástípushoz tartozó kalkuláció "
