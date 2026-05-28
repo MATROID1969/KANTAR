@@ -124,7 +124,8 @@ class Stage1Tartalom(Base):
     fobb_lepesek: Mapped[Optional[str]] = mapped_column(Text)  # soronként egy lépés
 
     # Időkeret
-    kutatas_idotartama: Mapped[Optional[str]] = mapped_column(String(100))
+    kutatas_idotartama: Mapped[Optional[str]] = mapped_column(String(100))  # deprecated
+    ajanlat_elbiralasa: Mapped[Optional[date]] = mapped_column(Date)
     tervezett_indulas: Mapped[Optional[date]] = mapped_column(Date)
     varhato_befejezes: Mapped[Optional[date]] = mapped_column(Date)
 
@@ -180,6 +181,27 @@ class Stage1KalkSzemiotika(Base):
     filmkeszites_ora: Mapped[Optional[float]] = mapped_column(Float)
     workshop_ora: Mapped[Optional[float]] = mapped_column(Float)
 
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1KalkKvalitativ(Base):
+    """
+    Szakasz 1 – Kalkuláció (Kvalitatív kutatás).
+    A paramétereket flexibilis JSON struktúrában tároljuk a sok blokk
+    (Rekrutálás / Terepmunka / Napló-blog / Megfigyelés / Feldolgozás /
+    Plusz szolgáltatások / Egyéb) miatt.
+    """
+
+    __tablename__ = "stage1_kalk_kvalitativ"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     offer: Mapped["Offer"] = relationship("Offer")
