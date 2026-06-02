@@ -20,7 +20,6 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
     t = tartalom  # rövidítés
 
     KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitatív"]
-    CELCSOPORT_OPTIONS = ["Lakossági", "Egyéb"]
 
     st.caption(
         "A **\\* csillaggal jelölt mezők** kötelezően kitöltendők – ezek nélkül "
@@ -31,19 +30,16 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
 
         # ── Önálló alapparaméterek ──────────────────────────────────────────
         saved_kutatas_tipusa = t.kutatas_tipusa if t else None
-        saved_celcsoport = t.celcsoport if t else None
-        # Ha egyszer mentve lettek, a kalkuláció ezekhez van kötve,
-        # ezért utólag már nem szerkeszthetők.
+        # Kutatás típusa: mentés után zárolva (kalkuláció ehhez kötve).
+        # Célcsoport a Kalkuláció fülre került, ott szabadon változtatható.
         kutatas_tipusa_locked = bool(saved_kutatas_tipusa)
-        celcsoport_locked = bool(saved_celcsoport)
 
         kutatas_tipusa_idx = (
             KUTATAS_TIPUSA_OPTIONS.index(saved_kutatas_tipusa)
             if saved_kutatas_tipusa in KUTATAS_TIPUSA_OPTIONS
             else None
         )
-        kt_col, cs_col = st.columns(2)
-        kutatas_tipusa = kt_col.selectbox(
+        kutatas_tipusa = st.selectbox(
             "Kutatás típusa \\*",
             KUTATAS_TIPUSA_OPTIONS,
             index=kutatas_tipusa_idx,
@@ -55,28 +51,9 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                 else "Kötelező mező – ez határozza meg, melyik kalkulációs sablon töltődik be."
             ),
         )
-        celcsoport_idx = (
-            CELCSOPORT_OPTIONS.index(saved_celcsoport)
-            if saved_celcsoport in CELCSOPORT_OPTIONS
-            else None
-        )
-        celcsoport = cs_col.selectbox(
-            "Célcsoport \\*",
-            CELCSOPORT_OPTIONS,
-            index=celcsoport_idx,
-            placeholder="Válassz célcsoportot…",
-            disabled=(not is_editable) or celcsoport_locked,
-            help=(
-                "Mentés után már nem módosítható, mert a kalkuláció ehhez van kötve."
-                if celcsoport_locked
-                else "Kötelező mező – a kalkulált munkaórák ettől függnek (Executive vs. Szenior sor)."
-            ),
-        )
         # Letiltott mezőknél a Streamlit None-t ad vissza – használjuk a mentett értéket.
         if kutatas_tipusa_locked:
             kutatas_tipusa = saved_kutatas_tipusa
-        if celcsoport_locked:
-            celcsoport = saved_celcsoport
 
         # ── 1. Háttér és cél ────────────────────────────────────────────────
         with st.expander("1. Háttér és cél", expanded=True):
@@ -95,6 +72,21 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                 help="Soronként egy kérdést adj meg.",
                 placeholder="- Milyen szimbolikus jelentések jelennek meg...\n- Hogyan értelmezik a fogyasztók...",
             )
+
+        KANTAR_TERMEK_OPTIONS = [
+            "Nincs",
+            "TRI*M",
+            "Needscope",
+            "Link",
+            "Conversion Model",
+            "AdEffect",
+            "Holistic Brand Guidance",
+            "ContextLab",
+            "CrossMedia",
+            "Brand Lift Insights (BLI)",
+            "AdNow",
+            "Meaningfully Different Framework (MDF)",
+        ]
 
         # ── 2. Módszertan ────────────────────────────────────────────────────
         with st.expander("2. Módszertan", expanded=False):
@@ -120,6 +112,22 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                 help="Soronként egy lépést adj meg.",
                 placeholder="1. Anyaggyűjtés és előzetes elemzés\n2. Kódok és jelek azonosítása\n3. ...",
             )
+            # Kantar márkázott termék – csak Kvalitatív kutatástípusnál jelenik meg
+            kantar_markezett_termek = None
+            if kutatas_tipusa == "Kvalitatív":
+                saved_kantar = t.kantar_markezett_termek if t else None
+                kantar_idx = (
+                    KANTAR_TERMEK_OPTIONS.index(saved_kantar)
+                    if saved_kantar in KANTAR_TERMEK_OPTIONS
+                    else 0
+                )
+                kantar_markezett_termek = st.selectbox(
+                    "Kantar márkázott termék",
+                    KANTAR_TERMEK_OPTIONS,
+                    index=kantar_idx,
+                    disabled=not is_editable,
+                    help="Kvalitatív kutatásnál alkalmazott Kantar-tulajdonú eszköz, ha releváns.",
+                )
 
         # ── 3. Időkeret ──────────────────────────────────────────────────────
         with st.expander("3. Időkeret", expanded=False):
@@ -165,11 +173,11 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                     {
                         "cel": cel,
                         "kutatas_tipusa": kutatas_tipusa,
-                        "celcsoport": celcsoport,
                         "kutatasi_kerdesek": kutatasi_kerdesek,
                         "elemzendo_anyagok": elemzendo_anyagok,
                         "kutatasi_eszkozok": kutatasi_eszkozok,
                         "fobb_lepesek": fobb_lepesek,
+                        "kantar_markezett_termek": kantar_markezett_termek,
                         "ajanlat_elbiralasa": ajanlat_elbiralasa,
                         "tervezett_indulas": tervezett_indulas,
                         "varhato_befejezes": varhato_befejezes,

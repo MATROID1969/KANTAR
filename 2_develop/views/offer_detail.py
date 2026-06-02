@@ -138,8 +138,6 @@ def _render_stage1(offer, db):
     hianyzo = []
     if not (tartalom and tartalom.kutatas_tipusa):
         hianyzo.append("Kutatás típusa")
-    if not (tartalom and tartalom.celcsoport):
-        hianyzo.append("Célcsoport")
     kalk_elerheto = not hianyzo
 
     if kalk_elerheto:

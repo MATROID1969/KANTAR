@@ -39,19 +39,37 @@ from db import crud
 # ---------------------------------------------------------------------------
 
 INTERJU_TIPUSOK = [
-    "1. Mélyinterjú",
-    "2. Páros interjú",
-    "3. Triád",
+    "1. Mélyinterjú (1 fő)",
+    "2. Páros interjú (2 fő)",
+    "3. Triád (3 fő)",
     "4. Mini csoport (4 fő)",
     "5. Csoport (6 fős)",
     "6. Csoport (8 fős)",
-    "7. XXL Csoport (10-12 fő)",
-    "8. Bi-pólus (2 csoport)",
-    "9. Konfliktus csoport",
-    "10. Elkísért vásárlás (AST)",
+    "7. XXL Csoport (10 fő)",
+    "8. Bi-pólus (12 fő)",
+    "9. Konfliktus csoport (12 fő)",
+    "10. Elkísért vásárlás / AST (1 fő)",
+    "11. Napló / blog",
+    "12. Megfigyelés",
 ]
-# Interjú-típusúak: 1,2,3,10. A többi csoport.
+# Interjú-típusúak: 1,2,3,10. A többi csoport. 11=Napló/blog, 12=Megfigyelés (külön logika).
 INTERJU_INDEXEK = {1, 2, 3, 10}
+
+# Típusonkénti fix alanyszám (alanyok száma / session); 11,12 = 0
+TIPUS_ALANYSZAM = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 6,
+    6: 8,
+    7: 10,
+    8: 12,
+    9: 12,
+    10: 1,
+    11: 0,
+    12: 0,
+}
 
 PLATFORM_OPTIONS = ["1. online", "2. off-line", "3. telefon"]
 HOSSZ_OPTIONS = [
@@ -142,26 +160,21 @@ def default_params() -> dict:
             "szervezes_nehezseg": 1,
             "kontaktlista": 1,
             "ugyfel_szervezes": 1,
-            "alanyszam": 0,  # rekrutált alanyok száma
         },
         "terepmunka": {
             "active": False,
-            "tipus": 1,
+            "tipus": None,  # None = nincs kiválasztva
             "darab": 0,
             "platform": 1,
             "hossz_perc_idx": 3,  # 1-7 index a HOSSZ_OPTIONS-ban → érték: 60 perc
             "megkerdezett_kor": 1,
             "helyszin": 1,
             "elofeladat": 1,
-        },
-        "naplo_blog": {
-            "active": False,
+            # Napló / blog (tipus=11) paraméterei
             "napok": 0,
             "resztvevok": 0,
             "napi_ido_idx": 1,
-        },
-        "megfigyeles": {
-            "active": False,
+            # Megfigyelés (tipus=12) paraméterei
             "oraszam": 0.0,
             "budapest_pct": 0,
             "videk_pct": 0,
@@ -216,17 +229,19 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
     rek = p.get("rekrutalas", {})
     if rek.get("active"):
         # H20 = 3 + 1,5×alanyszám×0,5 + 3,5×csoport + interjúszám×0,8
-        alanyszam = float(rek.get("alanyszam") or 0)
-        # csoport- és interjúszámot a Terepmunkából vesszük (ha aktív)
+        # alanyszám a típusból automatikusan adódik (×darab); 11/12 esetén 0
         terep = p.get("terepmunka", {})
-        if terep.get("active"):
+        tipus_rek = int(terep.get("tipus") or 0)
+        if terep.get("active") and 1 <= tipus_rek <= 10:
             darab = float(terep.get("darab") or 0)
-            is_interju = terep.get("tipus") in INTERJU_INDEXEK
+            is_interju = tipus_rek in INTERJU_INDEXEK
             csoport_n = 0.0 if is_interju else darab
             interju_n = darab if is_interju else 0.0
+            alanyszam = float(TIPUS_ALANYSZAM.get(tipus_rek, 0)) * darab
         else:
             csoport_n = 0.0
             interju_n = 0.0
+            alanyszam = 0.0
         _add(
             h,
             "szervezoi",
@@ -236,10 +251,11 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
         _add(h, "executive_kut", 3)
         _add(h, "gad", 2)
 
-    # 2) Terepmunka
+    # 2) Terepmunka (1-10) / Naplo-blog (11) / Megfigyeles (12)
     terep = p.get("terepmunka", {})
-    if terep.get("active") and (terep.get("darab") or 0) > 0:
-        tipus = int(terep.get("tipus") or 1)
+    t_tipus = int(terep.get("tipus") or 0)
+    if terep.get("active") and 1 <= t_tipus <= 10 and (terep.get("darab") or 0) > 0:
+        tipus = t_tipus
         darab = float(terep.get("darab") or 0)
         platform = int(terep.get("platform") or 1)
         hossz_idx = int(terep.get("hossz_perc_idx") or 1) - 1
@@ -317,33 +333,27 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
             _add(h, "szervezoi", (darab * (4 if is_interju else 1)) * 0.2)
 
     # 3) Napló / blog (I39/M39/P39 + H40)
-    np = p.get("naplo_blog", {})
-    if (
-        np.get("active")
-        and (np.get("napok") or 0) > 0
-        and (np.get("resztvevok") or 0) > 0
-    ):
-        napok = float(np["napok"])
-        resztvevok = float(np["resztvevok"])
-        _add(h, "szervezesi_vez", 1)
-        _add(h, "executive_kut", 2 + (1 + resztvevok / 100.0) * 2 * napok)
-        _add(h, "gad", 2)
-        _add(h, "szervezoi", resztvevok * 0.8 + 3)
+    elif terep.get("active") and t_tipus == 11:
+        napok_nb = float(terep.get("napok") or 0)
+        resztvevok_nb = float(terep.get("resztvevok") or 0)
+        if napok_nb > 0 and resztvevok_nb > 0:
+            _add(h, "szervezesi_vez", 1)
+            _add(h, "executive_kut", 2 + (1 + resztvevok_nb / 100.0) * 2 * napok_nb)
+            _add(h, "gad", 2)
+            _add(h, "szervezoi", resztvevok_nb * 0.8 + 3)
 
     # 4) Megfigyelés (I42/P42/M43/M44)
-    mf = p.get("megfigyeles", {})
-    if mf.get("active") and (mf.get("oraszam") or 0) > 0:
-        oraszam = float(mf["oraszam"])
-        bp_pct = float(mf.get("budapest_pct") or 0) / 100.0
-        videk_pct = float(mf.get("videk_pct") or 0) / 100.0
-        _add(h, "szervezesi_vez", 1)
-        _add(h, "gad", 1)
-        # Bp részre: 3 + óraszám×1,2 + 1
-        # Vidék részre: 3 + óraszám×1,2 + 4
-        if bp_pct > 0:
-            _add(h, "executive_kut", (3 + oraszam * 1.2 + 1) * bp_pct)
-        if videk_pct > 0:
-            _add(h, "executive_kut", (3 + oraszam * 1.2 + 4) * videk_pct)
+    elif terep.get("active") and t_tipus == 12:
+        oraszam_mf = float(terep.get("oraszam") or 0)
+        bp_pct = float(terep.get("budapest_pct") or 0) / 100.0
+        videk_pct = float(terep.get("videk_pct") or 0) / 100.0
+        if oraszam_mf > 0:
+            _add(h, "szervezesi_vez", 1)
+            _add(h, "gad", 1)
+            if bp_pct > 0:
+                _add(h, "executive_kut", (3 + oraszam_mf * 1.2 + 1) * bp_pct)
+            if videk_pct > 0:
+                _add(h, "executive_kut", (3 + oraszam_mf * 1.2 + 4) * videk_pct)
 
     # 5) Feldolgozás (Workshop képlet eltér: 2+óra minden szegmensre)
     f = p.get("feldolgozas", {})
@@ -363,9 +373,12 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
     if fp_alap_active:
         # M46/N46 = 25, O46=2, P46=1, L46=2+résztvevők×1
         # "résztvevők" itt = terepmunka.darab + naplo.resztvevok (heurisztika)
-        resztvevok_total = float((terep.get("darab") or 0)) + float(
-            (np.get("resztvevok") or 0)
-        )
+        if t_tipus == 11:
+            resztvevok_total = float(terep.get("resztvevok") or 0)
+        elif 1 <= t_tipus <= 10:
+            resztvevok_total = float(terep.get("darab") or 0)
+        else:
+            resztvevok_total = 0.0
         _add(h, "junior_kut", 2 + resztvevok_total * 1)
         if is_lak:
             _add(h, "executive_kut", 25)
@@ -479,14 +492,6 @@ def _render_rekrutalas(p: dict, is_editable: bool, key_prefix: str):
             disabled=not is_editable,
         )
         if rek["active"]:
-            rek["alanyszam"] = st.number_input(
-                "Rekrutált alanyok száma",
-                min_value=0,
-                step=1,
-                value=int(rek.get("alanyszam") or 0),
-                key=f"{key_prefix}_rek_alanyszam",
-                disabled=not is_editable,
-            )
             rek["szervezes_nehezseg"] = (
                 st.selectbox(
                     "Szervezés nehézsége",
@@ -523,7 +528,7 @@ def _render_rekrutalas(p: dict, is_editable: bool, key_prefix: str):
 
 def _render_terepmunka(p: dict, is_editable: bool, key_prefix: str):
     t = p["terepmunka"]
-    with st.expander("2) Terepmunka – interjúk / csoportok", expanded=False):
+    with st.expander("2) Terepmunka", expanded=False):
         t["active"] = st.checkbox(
             "Van terepmunka",
             value=bool(t.get("active")),
@@ -531,153 +536,139 @@ def _render_terepmunka(p: dict, is_editable: bool, key_prefix: str):
             disabled=not is_editable,
         )
         if t["active"]:
-            t["tipus"] = int(
-                st.selectbox(
-                    "Típus",
-                    INTERJU_TIPUSOK,
-                    index=int(t.get("tipus") or 1) - 1,
-                    key=f"{key_prefix}_terep_tipus",
-                    disabled=not is_editable,
-                ).split(".")[0]
-            )
-            t["darab"] = st.number_input(
-                "Darabszám",
-                min_value=0,
-                step=1,
-                value=int(t.get("darab") or 0),
-                key=f"{key_prefix}_terep_darab",
+            # Típus – None ha még nincs kiválasztva
+            saved_tipus = t.get("tipus")
+            _tipus_idx = (int(saved_tipus) - 1) if saved_tipus is not None else None
+            _tipus_label = st.selectbox(
+                "Típus",
+                INTERJU_TIPUSOK,
+                index=_tipus_idx,
+                placeholder="Válassz terepmunka-típust…",
+                key=f"{key_prefix}_terep_tipus",
                 disabled=not is_editable,
             )
-            t["platform"] = int(
-                st.selectbox(
-                    "Platform",
-                    PLATFORM_OPTIONS,
-                    index=int(t.get("platform") or 1) - 1,
-                    key=f"{key_prefix}_terep_platform",
+            if _tipus_label is not None:
+                t["tipus"] = int(_tipus_label.split(".")[0])
+            else:
+                t["tipus"] = None
+            tipus = t["tipus"]
+            if tipus is not None and 1 <= tipus <= 10:
+                t["darab"] = st.number_input(
+                    "Darabszám",
+                    min_value=0,
+                    step=1,
+                    value=int(t.get("darab") or 0),
+                    key=f"{key_prefix}_terep_darab",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-            t["hossz_perc_idx"] = int(
-                st.selectbox(
-                    "Interjú / csoport hossza",
-                    [opt for opt, _ in HOSSZ_OPTIONS],
-                    index=int(t.get("hossz_perc_idx") or 3) - 1,
-                    key=f"{key_prefix}_terep_hossz",
+                )
+                t["platform"] = int(
+                    st.selectbox(
+                        "Platform",
+                        PLATFORM_OPTIONS,
+                        index=int(t.get("platform") or 1) - 1,
+                        key=f"{key_prefix}_terep_platform",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+                t["hossz_perc_idx"] = int(
+                    st.selectbox(
+                        "Interjú / csoport hossza",
+                        [opt for opt, _ in HOSSZ_OPTIONS],
+                        index=int(t.get("hossz_perc_idx") or 3) - 1,
+                        key=f"{key_prefix}_terep_hossz",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+                t["megkerdezett_kor"] = int(
+                    st.selectbox(
+                        "Megkérdezettek köre",
+                        MEGKERDEZETT_KOR,
+                        index=int(t.get("megkerdezett_kor") or 1) - 1,
+                        key=f"{key_prefix}_terep_kor",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+                t["helyszin"] = int(
+                    st.selectbox(
+                        "Megkérdezés helye",
+                        HELYSZIN_OPTIONS,
+                        index=int(t.get("helyszin") or 1) - 1,
+                        key=f"{key_prefix}_terep_helyszin",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+                t["elofeladat"] = int(
+                    st.selectbox(
+                        "Előfeladat",
+                        ELOFELADAT_OPTIONS,
+                        index=int(t.get("elofeladat") or 1) - 1,
+                        key=f"{key_prefix}_terep_elof",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+            elif tipus == 11:
+                t["napok"] = st.number_input(
+                    "Napok száma (1–10)",
+                    min_value=0,
+                    max_value=10,
+                    step=1,
+                    value=int(t.get("napok") or 0),
+                    key=f"{key_prefix}_terep_napok",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-            t["megkerdezett_kor"] = int(
-                st.selectbox(
-                    "Megkérdezettek köre",
-                    MEGKERDEZETT_KOR,
-                    index=int(t.get("megkerdezett_kor") or 1) - 1,
-                    key=f"{key_prefix}_terep_kor",
+                )
+                t["resztvevok"] = st.number_input(
+                    "Résztvevők száma (10–40)",
+                    min_value=0,
+                    max_value=40,
+                    step=1,
+                    value=int(t.get("resztvevok") or 0),
+                    key=f"{key_prefix}_terep_resztvevok",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-            t["helyszin"] = int(
-                st.selectbox(
-                    "Megkérdezés helye",
-                    HELYSZIN_OPTIONS,
-                    index=int(t.get("helyszin") or 1) - 1,
-                    key=f"{key_prefix}_terep_helyszin",
+                )
+                t["napi_ido_idx"] = int(
+                    st.selectbox(
+                        "Napi időráfordítás",
+                        [opt for opt, _ in NAPI_IDO_OPTIONS],
+                        index=int(t.get("napi_ido_idx") or 1) - 1,
+                        key=f"{key_prefix}_terep_napi_ido",
+                        disabled=not is_editable,
+                    ).split(".")[0]
+                )
+            elif tipus == 12:
+                t["oraszam"] = st.number_input(
+                    "Megfigyelési óraszám",
+                    min_value=0.0,
+                    step=0.5,
+                    value=float(t.get("oraszam") or 0),
+                    key=f"{key_prefix}_terep_oraszam",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-            t["elofeladat"] = int(
-                st.selectbox(
-                    "Előfeladat",
-                    ELOFELADAT_OPTIONS,
-                    index=int(t.get("elofeladat") or 1) - 1,
-                    key=f"{key_prefix}_terep_elof",
+                )
+                col1, col2 = st.columns(2)
+                t["budapest_pct"] = col1.number_input(
+                    "Budapest aránya (%)",
+                    min_value=0,
+                    max_value=100,
+                    step=5,
+                    value=int(t.get("budapest_pct") or 0),
+                    key=f"{key_prefix}_terep_bp",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-
-
-def _render_naplo(p: dict, is_editable: bool, key_prefix: str):
-    n = p["naplo_blog"]
-    with st.expander("3) Napló / blog", expanded=False):
-        n["active"] = st.checkbox(
-            "Van napló / blog",
-            value=bool(n.get("active")),
-            key=f"{key_prefix}_nap_active",
-            disabled=not is_editable,
-        )
-        if n["active"]:
-            n["napok"] = st.number_input(
-                "Napok száma (1-10)",
-                min_value=0,
-                max_value=10,
-                step=1,
-                value=int(n.get("napok") or 0),
-                key=f"{key_prefix}_nap_napok",
-                disabled=not is_editable,
-            )
-            n["resztvevok"] = st.number_input(
-                "Résztvevők száma (10-40)",
-                min_value=0,
-                max_value=40,
-                step=1,
-                value=int(n.get("resztvevok") or 0),
-                key=f"{key_prefix}_nap_res",
-                disabled=not is_editable,
-            )
-            n["napi_ido_idx"] = int(
-                st.selectbox(
-                    "Napi időráfordítás",
-                    [opt for opt, _ in NAPI_IDO_OPTIONS],
-                    index=int(n.get("napi_ido_idx") or 1) - 1,
-                    key=f"{key_prefix}_nap_ido",
+                )
+                t["videk_pct"] = col2.number_input(
+                    "Vidék aránya (%)",
+                    min_value=0,
+                    max_value=100,
+                    step=5,
+                    value=int(t.get("videk_pct") or 0),
+                    key=f"{key_prefix}_terep_vd",
                     disabled=not is_editable,
-                ).split(".")[0]
-            )
-
-
-def _render_megfigyeles(p: dict, is_editable: bool, key_prefix: str):
-    m = p["megfigyeles"]
-    with st.expander("4) Megfigyelés", expanded=False):
-        m["active"] = st.checkbox(
-            "Van megfigyelés",
-            value=bool(m.get("active")),
-            key=f"{key_prefix}_mf_active",
-            disabled=not is_editable,
-        )
-        if m["active"]:
-            m["oraszam"] = st.number_input(
-                "Megfigyelési óraszám",
-                min_value=0.0,
-                step=0.5,
-                value=float(m.get("oraszam") or 0),
-                key=f"{key_prefix}_mf_ora",
-                disabled=not is_editable,
-            )
-            col1, col2 = st.columns(2)
-            m["budapest_pct"] = col1.number_input(
-                "Budapest aránya (%)",
-                min_value=0,
-                max_value=100,
-                step=5,
-                value=int(m.get("budapest_pct") or 0),
-                key=f"{key_prefix}_mf_bp",
-                disabled=not is_editable,
-            )
-            m["videk_pct"] = col2.number_input(
-                "Vidék aránya (%)",
-                min_value=0,
-                max_value=100,
-                step=5,
-                value=int(m.get("videk_pct") or 0),
-                key=f"{key_prefix}_mf_vd",
-                disabled=not is_editable,
-            )
-            if m["budapest_pct"] + m["videk_pct"] not in (0, 100):
-                st.warning("A Budapest + Vidék % összegének 100-nak kell lennie.")
+                )
+                if t["budapest_pct"] + t["videk_pct"] not in (0, 100):
+                    st.warning("Budapest + Vidék % összege 100 kell legyen.")
 
 
 def _render_feldolgozas(p: dict, is_editable: bool, key_prefix: str):
     f = p["feldolgozas"]
-    with st.expander("5) Feldolgozás", expanded=True):
+    with st.expander("3) Feldolgozás", expanded=False):
         st.caption(
             "Minden paraméter alapértéke 0; írd felül a tényleges értékekkel. "
             "A „Feldolgozási alap” automatikusan számolódik."
@@ -725,7 +716,7 @@ def _render_feldolgozas(p: dict, is_editable: bool, key_prefix: str):
 
 def _render_plusz_szolg(p: dict, is_editable: bool, key_prefix: str):
     ps = p["plusz_szolg"]
-    with st.expander("6) Plusz szolgáltatások", expanded=False):
+    with st.expander("4) Plusz szolgáltatások", expanded=False):
         ps["kiiras"] = int(
             st.selectbox(
                 "Kiírás",
@@ -804,7 +795,7 @@ def _render_plusz_szolg(p: dict, is_editable: bool, key_prefix: str):
 
 def _render_egyeb(p: dict, is_editable: bool, key_prefix: str):
     e = p["egyeb"]
-    with st.expander("7) Egyéb", expanded=False):
+    with st.expander("5) Egyéb", expanded=False):
         e["munkaora"] = st.number_input(
             "Egyéb munkaóra (Szervezői sorra adódik)",
             min_value=0.0,
@@ -923,7 +914,6 @@ def _render_param_summary_panel(p: dict):
             (
                 "Rekrutálás",
                 [
-                    row("Rekrutált alanyok", rek.get("alanyszam"), "fő"),
                     row(
                         "Szervezés nehézsége",
                         SZERVEZES_NEHEZSEG[int(rek.get("szervezes_nehezseg") or 1) - 1],
@@ -941,61 +931,54 @@ def _render_param_summary_panel(p: dict):
         )
 
     t = p.get("terepmunka", {})
-    if t.get("active"):
-        try:
-            hossz_label = HOSSZ_OPTIONS[int(t.get("hossz_perc_idx") or 1) - 1][0]
-        except Exception:
-            hossz_label = "—"
-        sections.append(
-            (
-                "Terepmunka",
-                [
-                    row("Típus", INTERJU_TIPUSOK[int(t.get("tipus") or 1) - 1]),
-                    row("Darabszám", t.get("darab"), "db"),
-                    row("Platform", PLATFORM_OPTIONS[int(t.get("platform") or 1) - 1]),
-                    row("Hossz", hossz_label),
-                    row(
-                        "Megkérdezettek",
-                        MEGKERDEZETT_KOR[int(t.get("megkerdezett_kor") or 1) - 1],
-                    ),
-                    row("Helyszín", HELYSZIN_OPTIONS[int(t.get("helyszin") or 1) - 1]),
-                    row(
-                        "Előfeladat",
-                        ELOFELADAT_OPTIONS[int(t.get("elofeladat") or 1) - 1],
-                    ),
-                ],
-            )
+    t_tipus = int(t.get("tipus") or 0) if t.get("active") else 0
+    if t.get("active") and t_tipus:
+        tipus_label = (
+            INTERJU_TIPUSOK[t_tipus - 1]
+            if 1 <= t_tipus <= len(INTERJU_TIPUSOK)
+            else "—"
         )
-
-    n = p.get("naplo_blog", {})
-    if n.get("active"):
-        try:
-            napi_label = NAPI_IDO_OPTIONS[int(n.get("napi_ido_idx") or 1) - 1][0]
-        except Exception:
-            napi_label = "—"
-        sections.append(
-            (
-                "Napló / blog",
-                [
-                    row("Napok", n.get("napok"), "nap"),
-                    row("Résztvevők", n.get("resztvevok"), "fő"),
-                    row("Napi időráfordítás", napi_label),
-                ],
-            )
-        )
-
-    mf = p.get("megfigyeles", {})
-    if mf.get("active"):
-        sections.append(
-            (
-                "Megfigyelés",
-                [
-                    row("Óraszám", mf.get("oraszam"), "óra"),
-                    row("Budapest aránya", mf.get("budapest_pct"), "%"),
-                    row("Vidék aránya", mf.get("videk_pct"), "%"),
-                ],
-            )
-        )
+        if 1 <= t_tipus <= 10:
+            try:
+                hossz_label = HOSSZ_OPTIONS[int(t.get("hossz_perc_idx") or 1) - 1][0]
+            except Exception:
+                hossz_label = "—"
+            terep_rows = [
+                row("Típus", tipus_label),
+                row("Darabszám", t.get("darab"), "db"),
+                row("Platform", PLATFORM_OPTIONS[int(t.get("platform") or 1) - 1]),
+                row("Hossz", hossz_label),
+                row(
+                    "Megkérdezettek",
+                    MEGKERDEZETT_KOR[int(t.get("megkerdezett_kor") or 1) - 1],
+                ),
+                row("Helyszín", HELYSZIN_OPTIONS[int(t.get("helyszin") or 1) - 1]),
+                row(
+                    "Előfeladat",
+                    ELOFELADAT_OPTIONS[int(t.get("elofeladat") or 1) - 1],
+                ),
+            ]
+        elif t_tipus == 11:
+            try:
+                napi_label = NAPI_IDO_OPTIONS[int(t.get("napi_ido_idx") or 1) - 1][0]
+            except Exception:
+                napi_label = "—"
+            terep_rows = [
+                row("Típus", tipus_label),
+                row("Napok", t.get("napok"), "nap"),
+                row("Résztvevők", t.get("resztvevok"), "fő"),
+                row("Napi időráfordítás", napi_label),
+            ]
+        elif t_tipus == 12:
+            terep_rows = [
+                row("Típus", tipus_label),
+                row("Óraszám", t.get("oraszam"), "óra"),
+                row("Budapest aránya", t.get("budapest_pct"), "%"),
+                row("Vidék aránya", t.get("videk_pct"), "%"),
+            ]
+        else:
+            terep_rows = [row("Típus", tipus_label)]
+        sections.append(("Terepmunka", terep_rows))
 
     f = p.get("feldolgozas", {})
     feld_rows = [
@@ -1082,6 +1065,156 @@ def _render_feldolg_alap_panel(p: dict):
 
 
 # ---------------------------------------------------------------------------
+# Multi-job helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_job_complete(p: dict) -> bool:
+    """Egy munkafül 'kitöltött' (zöld), ha legalább egy fő szekció aktív."""
+    rek_ok = p.get("rekrutalas", {}).get("active", False)
+    terep = p.get("terepmunka", {})
+    terep_ok = terep.get("active", False) and terep.get("tipus") is not None
+    return bool(rek_ok or terep_ok)
+
+
+def _load_state(record_json: Optional[str]) -> dict:
+    """DB JSON → belső state struktúra. Régi (egyszeres dict) formátumot migrál."""
+    state: dict = {"jobs": [], "active_job": 0}
+    if not record_json:
+        state["jobs"] = [default_params()]
+        return state
+    try:
+        loaded = json.loads(record_json)
+        if isinstance(loaded, dict) and "jobs" in loaded:
+            # Új formátum
+            raw_jobs = loaded.get("jobs", [])
+            state["active_job"] = int(loaded.get("active_job", 0))
+        else:
+            # Régi egyszeres formátum
+            raw_jobs = [loaded]
+        jobs = []
+        for raw in raw_jobs:
+            base = default_params()
+            if isinstance(raw, dict):
+                for sec in base:
+                    if sec in raw and isinstance(raw[sec], dict):
+                        base[sec].update(raw[sec])
+            jobs.append(base)
+        state["jobs"] = jobs if jobs else [default_params()]
+        # bounds check (a jobs fallback után!)
+        n = len(state["jobs"])
+        state["active_job"] = min(max(0, state["active_job"]), n - 1)
+    except Exception:
+        state["jobs"] = [default_params()]
+        state["active_job"] = 0
+    return state
+
+
+def _render_job_tabs(state: dict, state_key: str, is_editable: bool):
+    """Fülek sávja a munkák között, + gomb új munkához, × a törölhöz."""
+    jobs: list = state["jobs"]
+    active: int = state["active_job"]
+    n = len(jobs)
+
+    # CSS: kompakt, alacsony fülek; a kitöltött fülek zöldek.
+    complete_flags = [_is_job_complete(jobs[i]) for i in range(n)]
+    css_rules = []
+    for i, done in enumerate(complete_flags):
+        is_active = i == active
+        if done:
+            bg = "#198754" if is_active else "#d4edda"
+            fg = "#ffffff" if is_active else "#155724"
+            border = "#198754" if is_active else "#28a745"
+        elif is_active:
+            bg = "#f1f3f5"
+            fg = "#495057"
+            border = "#ced4da"
+        else:
+            bg = "#ffffff"
+            fg = "#6c757d"
+            border = "#dee2e6"
+        css_rules.append(
+            f".st-key-{state_key}_tab_{i} button {{"
+            " min-height: 1.7rem !important;"
+            " height: 1.7rem !important;"
+            " min-width: 6.2rem !important;"
+            " width: 6.2rem !important;"
+            " max-width: 6.2rem !important;"
+            " padding: 0.05rem 0.45rem !important;"
+            " font-size: 0.82rem !important;"
+            " font-weight: 500 !important;"
+            " line-height: 1 !important;"
+            " border-radius: 0.3rem !important;"
+            f" background-color: {bg} !important;"
+            f" color: {fg} !important;"
+            f" border-color: {border} !important;"
+            "}"
+        )
+    css_rules.append(
+        f".st-key-{state_key}_add_job button {{"
+        " min-height: 1.7rem !important;"
+        " height: 1.7rem !important;"
+        " min-width: 1.8rem !important;"
+        " width: 1.8rem !important;"
+        " max-width: 1.8rem !important;"
+        " padding: 0.1rem 0.3rem !important;"
+        " font-size: 1.05rem !important;"
+        " line-height: 1 !important;"
+        " border-radius: 0.3rem !important;"
+        "}"
+    )
+    css_rules.append(
+        f".st-key-{state_key}_del_job button {{"
+        " min-height: 1.7rem !important;"
+        " height: 1.7rem !important;"
+        " min-width: 1.8rem !important;"
+        " width: 1.8rem !important;"
+        " max-width: 1.8rem !important;"
+        " padding: 0.1rem 0.3rem !important;"
+        " font-size: 1.05rem !important;"
+        " line-height: 1 !important;"
+        " border-radius: 0.3rem !important;"
+        "}"
+    )
+    if css_rules:
+        st.markdown("<style>" + "".join(css_rules) + "</style>", unsafe_allow_html=True)
+
+    # 1. sor: + és olló ikonok (csak szerkesztési módban)
+    if is_editable:
+        icon_c1, icon_c2, _ = st.columns([0.28, 0.28, 12])
+        if icon_c1.button(
+            "\u271a",
+            key=f"{state_key}_add_job",
+            help="Új munka hozzáadása",
+        ):
+            state["jobs"].append(default_params())
+            state["active_job"] = len(state["jobs"]) - 1
+            st.rerun()
+        if icon_c2.button(
+            "\u2702",
+            key=f"{state_key}_del_job",
+            help=f"Munka {active + 1} törlése",
+            disabled=n <= 1,
+        ):
+            state["jobs"].pop(active)
+            state["active_job"] = max(0, active - 1)
+            st.rerun()
+
+    # 2. sor: munkafülek
+    tab_cols = st.columns([0.78] * n + [12], vertical_alignment="center")
+    for i in range(n):
+        prefix = "\u2713 " if complete_flags[i] else ""
+        label = f"{prefix}Munka {i + 1}"
+        btn_type = "primary" if i == active else "secondary"
+        if tab_cols[i].button(
+            label,
+            key=f"{state_key}_tab_{i}",
+        ):
+            state["active_job"] = i
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Fő belépőpont
 # ---------------------------------------------------------------------------
 
@@ -1093,13 +1226,18 @@ def render_stage1_kalkulacio_kvalitativ(offer_id: int, is_editable: bool, db: Se
         )
 
     tartalom = crud.get_stage1_tartalom(db, offer_id)
-    celcsoport = tartalom.celcsoport if tartalom else None
-    if not celcsoport:
-        st.warning(
-            "A kalkulációhoz előbb add meg a Célcsoportot a Tartalom fülön "
-            "(Lakossági / Egyéb)."
-        )
-        return
+    _CS_OPTIONS = ["Lakossági", "Egyéb"]
+    _saved_cs = tartalom.celcsoport if tartalom else None
+    _cs_idx = _CS_OPTIONS.index(_saved_cs) if _saved_cs in _CS_OPTIONS else 0
+    _cs_col, _ = st.columns([1, 3])
+    celcsoport = _cs_col.selectbox(
+        "Célcsoport",
+        _CS_OPTIONS,
+        index=_cs_idx,
+        disabled=not is_editable,
+        key=f"celcsoport_kvali_{offer_id}",
+        help="A kalkulált munkaórák ettől függnek (Executive vs. Szenior sor).",
+    )
 
     st.markdown("#### Kalkuláció – Kvalitatív kutatás")
     st.caption(
@@ -1111,40 +1249,45 @@ def render_stage1_kalkulacio_kvalitativ(offer_id: int, is_editable: bool, db: Se
     state_key = f"kvali_kalk_{offer_id}"
     if state_key not in st.session_state:
         record = crud.get_stage1_kalk_kvalitativ(db, offer_id)
-        if record and record.params_json:
-            try:
-                loaded = json.loads(record.params_json)
-                # merge a default-tal, hogy az új mezők is meglegyenek
-                base = default_params()
-                for sec in base:
-                    if sec in loaded and isinstance(loaded[sec], dict):
-                        base[sec].update(loaded[sec])
-                st.session_state[state_key] = base
-            except Exception:
-                st.session_state[state_key] = default_params()
-        else:
-            st.session_state[state_key] = default_params()
+        st.session_state[state_key] = _load_state(
+            record.params_json if record else None
+        )
 
-    p: dict = st.session_state[state_key]
+    state: dict = st.session_state[state_key]
+    jobs: list = state["jobs"]
+
+    # Fülek sávja
+    _render_job_tabs(state, state_key, is_editable)
+
+    # Aktív munka
+    active_idx: int = state.get("active_job", 0)
+    if active_idx >= len(jobs):
+        active_idx = 0
+        state["active_job"] = 0
+    p: dict = jobs[active_idx]
+    job_key = f"{state_key}_j{active_idx}"
 
     left, right = st.columns([1, 1])
 
     with left:
-        _render_rekrutalas(p, is_editable, state_key)
-        _render_terepmunka(p, is_editable, state_key)
-        _render_naplo(p, is_editable, state_key)
-        _render_megfigyeles(p, is_editable, state_key)
-        _render_feldolgozas(p, is_editable, state_key)
-        _render_plusz_szolg(p, is_editable, state_key)
-        _render_egyeb(p, is_editable, state_key)
+        _render_rekrutalas(p, is_editable, job_key)
+        _render_terepmunka(p, is_editable, job_key)
+        _render_feldolgozas(p, is_editable, job_key)
+        _render_plusz_szolg(p, is_editable, job_key)
+        _render_egyeb(p, is_editable, job_key)
 
     with right:
-        hours = calc_munkaora(p, celcsoport)
-        _render_munkaora_panel(
-            hours,
-            celcsoport,
-            extra_rovid=int(p["plusz_szolg"].get("extra_rovid") or 1) == 2,
+        # Összesített munkaórák (minden munkafül összege)
+        h_total = _new_hours()
+        for job_p in jobs:
+            h_job = calc_munkaora(job_p, celcsoport)
+            for k in h_total:
+                h_total[k] += h_job.get(k, 0.0)
+
+        extra_rovid_any = any(
+            int(job_p["plusz_szolg"].get("extra_rovid") or 1) == 2 for job_p in jobs
         )
+        _render_munkaora_panel(h_total, celcsoport, extra_rovid=extra_rovid_any)
         _render_feldolg_alap_panel(p)
         _render_param_summary_panel(p)
 
@@ -1162,7 +1305,12 @@ def render_stage1_kalkulacio_kvalitativ(offer_id: int, is_editable: bool, db: Se
                     "rendelhetők meg: " + ", ".join(errs)
                 )
             else:
+                crud.upsert_stage1_tartalom(db, offer_id, {"celcsoport": celcsoport})
+                save_data = {
+                    "jobs": jobs,
+                    "active_job": active_idx,
+                }
                 crud.upsert_stage1_kalk_kvalitativ(
-                    db, offer_id, json.dumps(p, ensure_ascii=False)
+                    db, offer_id, json.dumps(save_data, ensure_ascii=False)
                 )
                 st.toast("Kalkuláció mentve!")

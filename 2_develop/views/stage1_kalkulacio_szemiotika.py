@@ -235,15 +235,19 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
             "Ez a szakasz lezárult – a kalkuláció csak olvasható módban jelenik meg."
         )
 
-    # Célcsoport beolvasása a Tartalom fülről
     tartalom = crud.get_stage1_tartalom(db, offer_id)
-    celcsoport = tartalom.celcsoport if tartalom else None
-    if not celcsoport:
-        st.warning(
-            "A kalkulációhoz előbb add meg a Célcsoportot a Tartalom fülön "
-            "(Lakossági / Egyéb)."
-        )
-        return
+    _CS_OPTIONS = ["Lakossági", "Egyéb"]
+    _saved_cs = tartalom.celcsoport if tartalom else None
+    _cs_idx = _CS_OPTIONS.index(_saved_cs) if _saved_cs in _CS_OPTIONS else 0
+    _cs_col, _ = st.columns([1, 3])
+    celcsoport = _cs_col.selectbox(
+        "Célcsoport",
+        _CS_OPTIONS,
+        index=_cs_idx,
+        disabled=not is_editable,
+        key=f"celcsoport_szem_{offer_id}",
+        help="A kalkulált munkaórák ettől függnek (Executive vs. Szenior sor).",
+    )
 
     st.markdown("#### Kalkuláció – Szemiotika / Feldolgozás")
     st.caption(
@@ -334,6 +338,7 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
             key=f"save_{state_key}",
             disabled=save_disabled,
         ):
+            crud.upsert_stage1_tartalom(db, offer_id, {"celcsoport": celcsoport})
             crud.upsert_stage1_kalk_szemiotika(db, offer_id, values)
             st.toast("Kalkuláció mentve!")
             st.rerun()
