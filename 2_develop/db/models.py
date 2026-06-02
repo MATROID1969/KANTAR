@@ -122,6 +122,9 @@ class Stage1Tartalom(Base):
     kutatasi_eszkozok: Mapped[Optional[str]] = mapped_column(Text)
     kulsos_alvallalkozo: Mapped[Optional[str]] = mapped_column(Text)
     fobb_lepesek: Mapped[Optional[str]] = mapped_column(Text)  # soronként egy lépés
+    kantar_markezett_termek: Mapped[Optional[str]] = mapped_column(
+        String(100)
+    )  # csak Kvalitatív
 
     # Időkeret
     kutatas_idotartama: Mapped[Optional[str]] = mapped_column(String(100))  # deprecated
