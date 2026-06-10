@@ -208,3 +208,24 @@ class Stage1KalkKvalitativ(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1KalkKvantitativ(Base):
+    """
+    Szakasz 1 – Kalkuláció (Kvantitatív kutatás).
+    A paramétereket flexibilis JSON struktúrában tároljuk a sok blokk
+    (Terepmunka / Napló / Megfigyelés / DP / Feldolgozás / Analytics /
+    Plusz szolgáltatások / Egyéb) miatt.
+    """
+
+    __tablename__ = "stage1_kalk_kvantitativ"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")

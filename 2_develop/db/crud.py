@@ -12,6 +12,7 @@ from db.models import (
     Stage1Tartalom,
     Stage1KalkSzemiotika,
     Stage1KalkKvalitativ,
+    Stage1KalkKvantitativ,
     StageHandoff,
 )
 
@@ -183,6 +184,33 @@ def upsert_stage1_kalk_kvalitativ(
         record.updated_at = datetime.utcnow()
     else:
         record = Stage1KalkKvalitativ(offer_id=offer_id, params_json=params_json)
+        db.add(record)
+    _touch_offer(db, offer_id)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Stage 1 – Kalkuláció Kvantitatív (JSON-alapú)
+# ---------------------------------------------------------------------------
+
+
+def get_stage1_kalk_kvantitativ(
+    db: Session, offer_id: int
+) -> Stage1KalkKvantitativ | None:
+    return db.query(Stage1KalkKvantitativ).filter_by(offer_id=offer_id).first()
+
+
+def upsert_stage1_kalk_kvantitativ(
+    db: Session, offer_id: int, params_json: str
+) -> Stage1KalkKvantitativ:
+    record = db.query(Stage1KalkKvantitativ).filter_by(offer_id=offer_id).first()
+    if record:
+        record.params_json = params_json
+        record.updated_at = datetime.utcnow()
+    else:
+        record = Stage1KalkKvantitativ(offer_id=offer_id, params_json=params_json)
         db.add(record)
     _touch_offer(db, offer_id)
     db.commit()
