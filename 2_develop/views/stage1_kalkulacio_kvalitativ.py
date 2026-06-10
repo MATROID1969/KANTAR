@@ -229,7 +229,6 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
     rek = p.get("rekrutalas", {})
     if rek.get("active"):
         # H20 = 3 + 1,5×alanyszám×0,5 + 3,5×csoport + interjúszám×0,8
-        # alanyszám a típusból automatikusan adódik (×darab); 11/12 esetén 0
         terep = p.get("terepmunka", {})
         tipus_rek = int(terep.get("tipus") or 0)
         if terep.get("active") and 1 <= tipus_rek <= 10:
@@ -238,7 +237,13 @@ def calc_munkaora(p: dict, celcsoport: Optional[str]) -> dict:
             csoport_n = 0.0 if is_interju else darab
             interju_n = darab if is_interju else 0.0
             alanyszam = float(TIPUS_ALANYSZAM.get(tipus_rek, 0)) * darab
+        elif terep.get("active") and tipus_rek == 11:
+            # Napló/blog: a resztvevők az alanyszám, nincs csoport/interjú bontás
+            csoport_n = 0.0
+            interju_n = 0.0
+            alanyszam = float(terep.get("resztvevok") or 0)
         else:
+            # Megfigyelés (12) vagy nincs terepmunka: nincs mintaméret
             csoport_n = 0.0
             interju_n = 0.0
             alanyszam = 0.0

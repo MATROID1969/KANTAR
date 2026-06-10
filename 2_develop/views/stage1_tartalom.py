@@ -19,7 +19,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
     # Pre-fill értékek
     t = tartalom  # rövidítés
 
-    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitatív"]
+    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitátív", "Kvantitatív"]
 
     st.caption(
         "A **\\* csillaggal jelölt mezők** kötelezően kitöltendők – ezek nélkül "
@@ -112,9 +112,9 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                 help="Soronként egy lépést adj meg.",
                 placeholder="1. Anyaggyűjtés és előzetes elemzés\n2. Kódok és jelek azonosítása\n3. ...",
             )
-            # Kantar márkázott termék – csak Kvalitatív kutatástípusnál jelenik meg
+            # Kantar márkázott termék – Kvalitatív és Kvantitatív kutatástípusnál jelenik meg
             kantar_markezett_termek = None
-            if kutatas_tipusa == "Kvalitatív":
+            if kutatas_tipusa in ("Kvalitátív", "Kvantitatív"):
                 saved_kantar = t.kantar_markezett_termek if t else None
                 kantar_idx = (
                     KANTAR_TERMEK_OPTIONS.index(saved_kantar)
@@ -126,7 +126,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                     KANTAR_TERMEK_OPTIONS,
                     index=kantar_idx,
                     disabled=not is_editable,
-                    help="Kvalitatív kutatásnál alkalmazott Kantar-tulajdonú eszköz, ha releváns.",
+                    help="Kantar-tulajdonú eszköz, ha releváns (kvalitatív / kvantitatív kutatásnál).",
                 )
 
         # ── 3. Időkeret ──────────────────────────────────────────────────────

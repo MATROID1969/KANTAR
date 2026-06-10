@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from db import crud
 from views.stage1_kalkulacio_szemiotika import render_stage1_kalkulacio_szemiotika
 from views.stage1_kalkulacio_kvalitativ import render_stage1_kalkulacio_kvalitativ
+from views.stage1_kalkulacio_kvantitativ import render_stage1_kalkulacio_kvantitativ
 
 
 def render_stage1_kalkulacio(offer_id: int, is_editable: bool, db: Session):
@@ -19,6 +20,8 @@ def render_stage1_kalkulacio(offer_id: int, is_editable: bool, db: Session):
         render_stage1_kalkulacio_szemiotika(offer_id, is_editable, db)
     elif kutatas_tipusa == "Kvalitatív":
         render_stage1_kalkulacio_kvalitativ(offer_id, is_editable, db)
+    elif kutatas_tipusa == "Kvantitatív":
+        render_stage1_kalkulacio_kvantitativ(offer_id, is_editable, db)
     else:
         st.warning(
             f"A(z) „{kutatas_tipusa}” kutatástípushoz tartozó kalkuláció "
