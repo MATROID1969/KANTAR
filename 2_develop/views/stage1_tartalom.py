@@ -19,7 +19,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
     # Pre-fill értékek
     t = tartalom  # rövidítés
 
-    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitátív", "Kvantitatív"]
+    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitatív", "Kvantitatív"]
 
     st.caption(
         "A **\\* csillaggal jelölt mezők** kötelezően kitöltendők – ezek nélkül "
@@ -114,7 +114,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
             )
             # Kantar márkázott termék – Kvalitatív és Kvantitatív kutatástípusnál jelenik meg
             kantar_markezett_termek = None
-            if kutatas_tipusa in ("Kvalitátív", "Kvantitatív"):
+            if kutatas_tipusa in ("Kvalitatív", "Kvantitatív"):
                 saved_kantar = t.kantar_markezett_termek if t else None
                 kantar_idx = (
                     KANTAR_TERMEK_OPTIONS.index(saved_kantar)
