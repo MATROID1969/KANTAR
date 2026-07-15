@@ -8,6 +8,9 @@ A számolt munkaóra-értékek (Executive / Szenior / Kut.ig. / GAD) a jobb
 oldali panelen, 2x2 elrendezésben, valós időben jelennek meg.
 """
 
+import json
+
+import pandas as pd
 import streamlit as st
 from sqlalchemy.orm import Session
 
@@ -278,7 +281,7 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
     left_col, right_col = st.columns([1, 2])
 
     with left_col:
-        with st.expander("Feldolgozás paraméterei", expanded=True):
+        with st.expander("Feldolgozás paraméterei", expanded=False):
             for idx, (key, label, unit, vtype) in enumerate(FELDOLGOZAS_PARAMS):
                 current = values.get(key)
                 widget_key = f"w_{state_key}_{key}"
@@ -338,9 +341,50 @@ def render_stage1_kalkulacio_szemiotika(offer_id: int, is_editable: bool, db: Se
             key=f"save_{state_key}",
             disabled=save_disabled,
         ):
-            crud.upsert_stage1_tartalom(db, offer_id, {"celcsoport": celcsoport})
-            crud.upsert_stage1_kalk_szemiotika(db, offer_id, values)
-            st.toast("Kalkuláció mentve!")
-            st.rerun()
+            params_json = json.dumps(values, ensure_ascii=False, sort_keys=True)
+            changed = crud.save_kalk_history(
+                db,
+                offer_id,
+                "szemiotika",
+                params_json,
+                saved_by_user_id=st.session_state.get("current_user_id"),
+            )
+            if changed:
+                crud.upsert_stage1_tartalom(db, offer_id, {"celcsoport": celcsoport})
+                crud.upsert_stage1_kalk_szemiotika(db, offer_id, values)
+                st.toast("Kalkuláció mentve!")
+                st.rerun()
+            else:
+                st.info("Nem történt változás a paraméterezésben – mentés kihagyva.")
     else:
         col_save.button("Mentés", disabled=True, key=f"save_{state_key}_dis")
+
+    history = crud.get_kalk_history(db, offer_id, "szemiotika")
+    if history:
+        with st.expander(f"📋 Kalkuláció-verziók ({len(history)} db)"):
+            labels = [
+                f"V{len(history) - i}  –  {h.saved_at.strftime('%Y-%m-%d %H:%M')}  –  "
+                f"{h.saved_by.nev if h.saved_by else '—'}"
+                for i, h in enumerate(history)
+            ]
+            selected_label = st.radio(
+                "Betöltendő verzió:",
+                labels,
+                index=0,
+                key=f"hist_radio_{offer_id}_szem",
+            )
+            if st.button(
+                "⬆️ Kiválasztott verzió betöltése",
+                key=f"hist_load_{offer_id}_szem",
+                disabled=not is_editable,
+                help="Betöltés után az aktuális paraméterek felülíródnak. "
+                "Ha meg akarod tartani, nyomj rá a Mentés gombra.",
+            ):
+                selected_idx = labels.index(selected_label)
+                st.session_state[state_key] = json.loads(
+                    history[selected_idx].params_json
+                )
+                st.toast(
+                    "Korábbi verzió betöltve – ellenőrizd, majd ments, ha megtartod!"
+                )
+                st.rerun()

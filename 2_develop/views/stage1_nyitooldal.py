@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from sqlalchemy.orm import Session
 
 from db import crud
@@ -101,7 +102,10 @@ def _label(text: str, filled: bool) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render_stage1_nyitooldal(offer_id: int, is_editable: bool, db: Session):
+def render_stage1_nyitooldal(offer_id: int, db: Session):
+    edit_key = f"nyitooldal_edit_{offer_id}"
+    is_editable = st.session_state.get(edit_key, False)
+
     nyitooldal = crud.get_stage1_nyitooldal(db, offer_id)
     clients = crud.get_all_clients(db)
     client_names = [c.nev for c in clients]
@@ -123,9 +127,6 @@ def render_stage1_nyitooldal(offer_id: int, is_editable: bool, db: Session):
         client_ids.index(saved_client_id) if saved_client_id in client_ids else None
     )
 
-    if not is_editable:
-        st.info("Ez a szakasz lezárult – az adatok csak olvasható módban jelennek meg.")
-
     # ── Az ügyfél és a szektor a nyilvántartási szám alapját képezi,
     #    ezért külön (zárolt) blokkban jelenik meg, sötétkék kiemeléssel.
     identity_locked = nyitooldal is not None
@@ -137,7 +138,25 @@ def render_stage1_nyitooldal(offer_id: int, is_editable: bool, db: Session):
                 break
 
     with st.container(border=True):
-        st.markdown("##### Nyilvántartási szám alapadatai (nem módosítható)")
+        header_col, edit_col = st.columns([4, 1])
+        header_col.markdown("##### Nyilvántartási szám alapadatai (nem módosítható)")
+        if is_editable:
+            if edit_col.button(
+                "Szerkesztés vége",
+                type="primary",
+                use_container_width=True,
+                key=f"edit_toggle_{offer_id}",
+            ):
+                st.session_state[edit_key] = False
+                st.rerun()
+        else:
+            if edit_col.button(
+                "Szerkesztés",
+                use_container_width=True,
+                key=f"edit_toggle_{offer_id}",
+            ):
+                st.session_state[edit_key] = True
+                st.rerun()
         st.write("")
         ic1, ic2 = st.columns(2)
         with ic1:
@@ -253,7 +272,34 @@ def render_stage1_nyitooldal(offer_id: int, is_editable: bool, db: Session):
                         "divizion": divizion,
                         "orszagok_szama": int(orszagok_szama),
                     },
+                    modified_by_user_id=st.session_state.get("current_user_id"),
                 )
+                st.session_state[edit_key] = False
                 st.toast("Nyitóoldal adatok mentve!")
+                st.rerun()
         else:
             st.form_submit_button("Mentés", disabled=True)
+
+    history = crud.get_nyitooldal_history(db, offer_id)
+    if history:
+        with st.expander("📋 Módosítási előzmények"):
+            rows = []
+            for h in history:
+                elfogadas_str = (
+                    f"{int(h.elfogadas_eselye * 100)}%" if h.elfogadas_eselye else "—"
+                )
+                rows.append(
+                    {
+                        "Dátum": h.modified_at.strftime("%Y-%m-%d %H:%M"),
+                        "Módosította": h.modified_by.nev if h.modified_by else "—",
+                        "Kategória": h.ugyfel_kategoria or "—",
+                        "Kontakt": h.kontakt or "—",
+                        "Keretszerz.": h.keretszerzodes or "—",
+                        "Domain": h.domain or "—",
+                        "Üzletszerző": h.uzletszerzo or "—",
+                        "Elfogadás": elfogadas_str,
+                        "Divízió": h.divizion or "—",
+                        "Országok": str(h.orszagok_szama) if h.orszagok_szama else "—",
+                    }
+                )
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)

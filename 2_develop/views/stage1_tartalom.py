@@ -10,21 +10,47 @@ from db import crud
 # ---------------------------------------------------------------------------
 
 
-def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
-    tartalom = crud.get_stage1_tartalom(db, offer_id)
+def render_stage1_tartalom(offer_id: int, db: Session):
+    edit_key = f"tartalom_edit_{offer_id}"
+    is_editable = st.session_state.get(edit_key, False)
 
-    if not is_editable:
-        st.info("Ez a szakasz lezárult – az adatok csak olvasható módban jelennek meg.")
+    tartalom = crud.get_stage1_tartalom(db, offer_id)
 
     # Pre-fill értékek
     t = tartalom  # rövidítés
 
-    KUTATAS_TIPUSA_OPTIONS = ["Szemiotika", "Kvalitatív", "Kvantitatív"]
+    KUTATAS_TIPUSA_OPTIONS = [
+        "Szemiotika",
+        "Kvalitatív",
+        "Kvantitatív",
+        "TGI",
+        "Másodelemzés",
+        "Tréning",
+        "DESP / COCR / SUCL",
+    ]
 
-    st.caption(
+    cap_col, btn_col = st.columns([4, 1])
+    cap_col.caption(
         "A **\\* csillaggal jelölt mezők** kötelezően kitöltendők – ezek nélkül "
         "a Kalkuláció fül nem érhető el."
     )
+    if is_editable:
+        if btn_col.button(
+            "Szerkesztés vége",
+            type="primary",
+            use_container_width=True,
+            key=f"tartalom_edit_toggle_{offer_id}",
+        ):
+            st.session_state[edit_key] = False
+            st.rerun()
+    else:
+        if btn_col.button(
+            "Szerkesztés",
+            use_container_width=True,
+            key=f"tartalom_edit_toggle_{offer_id}",
+        ):
+            st.session_state[edit_key] = True
+            st.rerun()
 
     with st.form(f"form_tartalom_{offer_id}"):
 
@@ -40,7 +66,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
             else None
         )
         kutatas_tipusa = st.selectbox(
-            "Kutatás típusa \\*",
+            "Kutatási modul \\*",
             KUTATAS_TIPUSA_OPTIONS,
             index=kutatas_tipusa_idx,
             placeholder="Válassz kutatástípust…",
@@ -183,6 +209,7 @@ def render_stage1_tartalom(offer_id: int, is_editable: bool, db: Session):
                         "varhato_befejezes": varhato_befejezes,
                     },
                 )
+                st.session_state[edit_key] = False
                 st.toast("Tartalom mentve!")
                 st.rerun()
         else:

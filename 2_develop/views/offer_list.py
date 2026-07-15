@@ -4,6 +4,7 @@ import pandas as pd
 from db.database import get_session
 from db import crud
 from config import APP_TITLE
+from views.stage1_nyitooldal import UZLETSZERZO_OPTIONS
 
 # ---------------------------------------------------------------------------
 # Segédadatok (az Excel Nyitóoldal lapjából)
@@ -56,6 +57,13 @@ def _new_offer_dialog():
         SZEKTOR_OPTIONS,
         help="Ez határozza meg a nyilvántartó szám betűjelét.",
     )
+    projekt_neve = st.text_input("Projekt neve *", placeholder="pl. Márkakövetés 2026")
+    uzletszerzo = st.selectbox(
+        "Üzletszerző *",
+        UZLETSZERZO_OPTIONS,
+        index=None,
+        placeholder="— Válassz üzletszerzőt —",
+    )
 
     st.caption("A nyilvántartó szám (pl. 26I001) automatikusan generálódik.")
 
@@ -66,24 +74,31 @@ def _new_offer_dialog():
         st.rerun()
 
     if col2.button("Létrehozás", type="primary", use_container_width=True):
-        offer = crud.create_offer(
-            db=db,
-            szektor=szektor,
-            owner_id=st.session_state.current_user_id,
-        )
-        crud.upsert_stage1_nyitooldal(
-            db,
-            offer.id,
-            {
-                "ugyfel_id": client_map[ugyfel_nev],
-                "ugyfel_szektor": szektor,
-            },
-        )
-        st.session_state.show_new_offer = False
-        st.session_state.selected_offer_id = offer.id
-        st.session_state.page = "detail"
-        db.close()
-        st.rerun()
+        if not projekt_neve.strip():
+            st.error("A projekt neve kötelező!")
+        elif uzletszerzo is None:
+            st.error("Az üzletszerző megadása kötelező!")
+        else:
+            offer = crud.create_offer(
+                db=db,
+                szektor=szektor,
+                owner_id=st.session_state.current_user_id,
+                projekt_neve=projekt_neve.strip(),
+            )
+            crud.upsert_stage1_nyitooldal(
+                db,
+                offer.id,
+                {
+                    "ugyfel_id": client_map[ugyfel_nev],
+                    "ugyfel_szektor": szektor,
+                    "uzletszerzo": uzletszerzo,
+                },
+            )
+            st.session_state.show_new_offer = False
+            st.session_state.selected_offer_id = offer.id
+            st.session_state.page = "detail"
+            db.close()
+            st.rerun()
 
     db.close()
 
@@ -130,7 +145,13 @@ def render_offer_list():
             {
                 "_id": o.id,
                 "Szám": o.nyilvantarto_szam,
+                "Projekt neve": o.projekt_neve or "—",
                 "Ügyfél": ugyfel_nev,
+                "Üzletszerző": (
+                    o.stage1_nyitooldal.uzletszerzo
+                    if o.stage1_nyitooldal and o.stage1_nyitooldal.uzletszerzo
+                    else "—"
+                ),
                 "Szakasz": f"Szakasz {o.current_stage}",
                 "Státusz": STATUS_LABELS.get(o.status, o.status),
                 "Felelős": o.current_owner.nev if o.current_owner else "—",

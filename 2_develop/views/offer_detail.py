@@ -83,8 +83,16 @@ def render_offer_detail(offer_id: int):
         db.close()
         return
 
+    # EDIT állapot inicializálása (ha még nincs beállítva ehhez az ajánlathoz)
+    if f"nyitooldal_edit_{offer_id}" not in st.session_state:
+        st.session_state[f"nyitooldal_edit_{offer_id}"] = False
+    if f"tartalom_edit_{offer_id}" not in st.session_state:
+        st.session_state[f"tartalom_edit_{offer_id}"] = False
+
     # Vissza gomb
     if st.button("← Vissza a listához"):
+        st.session_state.pop(f"nyitooldal_edit_{offer_id}", None)
+        st.session_state.pop(f"tartalom_edit_{offer_id}", None)
         db.close()
         st.session_state.page = "list"
         st.session_state.selected_offer_id = None
@@ -94,12 +102,25 @@ def render_offer_detail(offer_id: int):
     st.title(f"Nyilvántartási száma: {offer.nyilvantarto_szam}")
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric(
-        "Szakasz", f"Szakasz {offer.current_stage} – {STAGE_NAMES[offer.current_stage]}"
-    )
-    col2.metric("Státusz", STATUS_LABELS.get(offer.status, offer.status))
-    col3.metric("Felelős", offer.current_owner.nev if offer.current_owner else "—")
-    col4.metric("Létrehozva", offer.created_at.strftime("%Y-%m-%d"))
+    for _col, _lbl, _val in [
+        (
+            col1,
+            "Szakasz",
+            f"Szakasz {offer.current_stage} – {STAGE_NAMES[offer.current_stage]}",
+        ),
+        (col2, "Státusz", STATUS_LABELS.get(offer.status, offer.status)),
+        (col3, "Felelős", offer.current_owner.nev if offer.current_owner else "—"),
+        (col4, "Létrehozva", offer.created_at.strftime("%Y-%m-%d")),
+    ]:
+        _col.markdown(
+            f"<div style='padding:0.4rem 0;'>"
+            f"<div style='font-size:0.72rem; color:#5a6b80; font-weight:600; "
+            f"letter-spacing:0.06em; text-transform:uppercase;'>{_lbl}</div>"
+            f"<div style='font-size:0.95rem; font-weight:600; color:#1a2332; "
+            f"margin-top:0.15rem; line-height:1.35;'>{_val}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     st.divider()
 
     # ── Csak az aktuális + már lezárt szakaszok jelennek meg tabként ────────
@@ -137,7 +158,7 @@ def _render_stage1(offer, db):
     tartalom = crud.get_stage1_tartalom(db, offer.id)
     hianyzo = []
     if not (tartalom and tartalom.kutatas_tipusa):
-        hianyzo.append("Kutatás típusa")
+        hianyzo.append("Kutatási modul")
     kalk_elerheto = not hianyzo
 
     if kalk_elerheto:
@@ -147,7 +168,7 @@ def _render_stage1(offer, db):
     sub_tabs = st.tabs(sub_tab_labels)
 
     with sub_tabs[0]:
-        render_stage1_nyitooldal(offer_id=offer.id, is_editable=is_editable, db=db)
+        render_stage1_nyitooldal(offer_id=offer.id, db=db)
 
     with sub_tabs[1]:
         if not kalk_elerheto:
@@ -155,7 +176,7 @@ def _render_stage1(offer, db):
                 "A **Kalkuláció** fül akkor válik elérhetővé, ha kitöltöd az alábbi "
                 "kötelező mezőket: **" + ", ".join(hianyzo) + "**."
             )
-        render_stage1_tartalom(offer_id=offer.id, is_editable=is_editable, db=db)
+        render_stage1_tartalom(offer_id=offer.id, db=db)
 
     if kalk_elerheto:
         with sub_tabs[2]:

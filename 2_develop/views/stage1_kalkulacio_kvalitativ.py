@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+import pandas as pd
 import streamlit as st
 from sqlalchemy.orm import Session
 
@@ -1206,7 +1207,7 @@ def _render_job_tabs(state: dict, state_key: str, is_editable: bool):
             st.rerun()
 
     # 2. sor: munkafülek
-    tab_cols = st.columns([0.78] * n + [12], vertical_alignment="center")
+    tab_cols = st.columns([1] * n + [12], vertical_alignment="center")
     for i in range(n):
         prefix = "\u2713 " if complete_flags[i] else ""
         label = f"{prefix}Munka {i + 1}"
@@ -1310,12 +1311,56 @@ def render_stage1_kalkulacio_kvalitativ(offer_id: int, is_editable: bool, db: Se
                     "rendelhetők meg: " + ", ".join(errs)
                 )
             else:
-                crud.upsert_stage1_tartalom(db, offer_id, {"celcsoport": celcsoport})
                 save_data = {
                     "jobs": jobs,
                     "active_job": active_idx,
                 }
-                crud.upsert_stage1_kalk_kvalitativ(
-                    db, offer_id, json.dumps(save_data, ensure_ascii=False)
+                params_json = json.dumps(save_data, ensure_ascii=False)
+                changed = crud.save_kalk_history(
+                    db,
+                    offer_id,
+                    "kvalitativ",
+                    params_json,
+                    saved_by_user_id=st.session_state.get("current_user_id"),
                 )
-                st.toast("Kalkuláció mentve!")
+                if changed:
+                    crud.upsert_stage1_tartalom(
+                        db, offer_id, {"celcsoport": celcsoport}
+                    )
+                    crud.upsert_stage1_kalk_kvalitativ(db, offer_id, params_json)
+                    st.toast("Kalkuláció mentve!")
+                    st.rerun()
+                else:
+                    st.info(
+                        "Nem történt változás a paraméterezésben – mentés kihagyva."
+                    )
+
+    history = crud.get_kalk_history(db, offer_id, "kvalitativ")
+    if history:
+        with st.expander(f"📋 Kalkuláció-verziók ({len(history)} db)"):
+            labels = [
+                f"V{len(history) - i}  –  {h.saved_at.strftime('%Y-%m-%d %H:%M')}  –  "
+                f"{h.saved_by.nev if h.saved_by else '—'}"
+                for i, h in enumerate(history)
+            ]
+            selected_label = st.radio(
+                "Betöltendő verzió:",
+                labels,
+                index=0,
+                key=f"hist_radio_{offer_id}_kvali",
+            )
+            if st.button(
+                "⬆️ Kiválasztott verzió betöltése",
+                key=f"hist_load_{offer_id}_kvali",
+                disabled=not is_editable,
+                help="Betöltés után az aktuális paraméterek felülíródnak. "
+                "Ha meg akarod tartani, nyomj rá a Kalkuláció mentése gombra.",
+            ):
+                selected_idx = labels.index(selected_label)
+                st.session_state[state_key] = json.loads(
+                    history[selected_idx].params_json
+                )
+                st.toast(
+                    "Korábbi verzió betöltve – ellenőrizd, majd ments, ha megtartod!"
+                )
+                st.rerun()

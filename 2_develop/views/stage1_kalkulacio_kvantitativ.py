@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+import pandas as pd
 import streamlit as st
 from sqlalchemy.orm import Session
 
@@ -150,10 +151,10 @@ MUNKAORA_CATS = [
 # Analytics lookup (xlsx 96-99. sor + a 67/69/71/73. sorok képletei beépítve).
 # Kulcs → végső munkaóra-bontás kategóriánként.
 ANALYTICS_LOOKUP = {
-    "conjoint": {"dp": 30, "szenior_kut": 15, "kut_ig": 2, "gad": 1},
-    "kano": {"dp": 3, "szenior_kut": 3, "kut_ig": 0.5, "gad": 0.5},
-    "szegmentacio": {"dp": 20, "szenior_kut": 15, "kut_ig": 2, "gad": 1},
-    "modellezes": {"dp": 20, "szenior_kut": 15, "kut_ig": 2, "gad": 1},
+    "conjoint": {"dp": 30, "executive_kut": 10, "szenior_kut": 1, "gad": 1},
+    "kano": {"dp": 3, "executive_kut": 3, "szenior_kut": 0.5, "gad": 0.5},
+    "szegmentacio": {"dp": 20, "executive_kut": 10, "szenior_kut": 1, "gad": 1},
+    "modellezes": {"dp": 20, "executive_kut": 10, "szenior_kut": 1, "gad": 1},
 }
 
 
@@ -262,21 +263,17 @@ _KONTAKT_SZORZO = {1: 1.2, 2: 1.0, 3: 0.9, 4: 0.8}
 def _szervezesi_szorzo(terep: dict) -> float:
     """A magyarországi CAPI in-hall / helyszíni Szervezői óraszorzó.
 
-    Szorzó = Megkérdezettek köre × Mintanagyság × Mintavétel komplexitás
-             × Incidence Rate × Kontaktlista.
-    (Utóbbi kettő PLACEHOLDER – finomhangolásra vár.)
+    Szorzó = Megkérdezettek köre × Mintanagyság × Mintavétel komplexitás.
+    (Incidence Rate és Kontaktlista csak az alvállalkozói díjat befolyásolja –
+    azok a munkaóra-kalkulációban nem szerepelnek.)
     """
     kor = int(terep.get("megkerdezett_kor") or 1)
     minta = float(terep.get("mintanagysag") or 0)
     kompl = int(terep.get("mintavetel_komplexitas") or 1)
-    ir = int(terep.get("incidence_rate") or 6)  # alapért. legkedvezőbb sáv
-    kontakt = int(terep.get("kontaktlista") or 2)  # alapért. Kantar készíti
     sz_kor = 1.3 if kor in (2, 3, 4) else 1.0
     sz_minta = 1.1 if minta > 1000 else 1.0
     sz_kompl = 1.1 if kompl in (2, 3, 4) else 1.0
-    sz_ir = _IR_SZORZO.get(ir, 1.0)
-    sz_kontakt = _KONTAKT_SZORZO.get(kontakt, 1.0)
-    return sz_kor * sz_minta * sz_kompl * sz_ir * sz_kontakt
+    return sz_kor * sz_minta * sz_kompl
 
 
 def calc_munkaora(p: dict) -> dict:
@@ -305,15 +302,18 @@ def calc_munkaora(p: dict) -> dict:
             _add(h, "szervezoi", 7 + 10 * szorzo)
             _add(h, "ellenorzesi", 10 * fieldnap)
             _add(h, "szervezesi_vez", 1)
+            _add(h, "dp", 1)
         elif t_tipus == 3:  # CAPI in-home
-            _add(h, "szervezoi", 10 + (minta / 100.0 * 0.5))
+            _add(h, "szervezoi", 10 + (minta / 100.0 * 0.5) + (minta / 20.0))
             _add(h, "ellenorzesi", minta / 20.0)
             _add(h, "szervezesi_vez", 2)
+            _add(h, "dp", 2)
         elif t_tipus == 4:  # CAPI helyszíni
             szorzo = _szervezesi_szorzo(terep)
             _add(h, "szervezoi", 7 + 10 * szorzo)
             _add(h, "ellenorzesi", 10 * fieldnap)
             _add(h, "szervezesi_vez", 1)
+            _add(h, "dp", 1)
 
     # Kérdőív hossza → Szervezői: 6 + sávonként +2 óra (csak CAPI, CATI/CAWI-t
     # az alvállalkozó áraz, ott nem szervezünk)
@@ -1391,7 +1391,7 @@ def _render_job_tabs(state: dict, state_key: str, is_editable: bool):
             st.rerun()
 
     # 2. sor: munkafülek
-    tab_cols = st.columns([0.78] * n + [12], vertical_alignment="center")
+    tab_cols = st.columns([1] * n + [12], vertical_alignment="center")
     for i in range(n):
         prefix = "\u2713 " if complete_flags[i] else ""
         label = f"{prefix}Munka {i + 1}"
@@ -1478,7 +1478,49 @@ def render_stage1_kalkulacio_kvantitativ(offer_id: int, is_editable: bool, db: S
                     "jobs": jobs,
                     "active_job": active_idx,
                 }
-                crud.upsert_stage1_kalk_kvantitativ(
-                    db, offer_id, json.dumps(save_data, ensure_ascii=False)
+                params_json = json.dumps(save_data, ensure_ascii=False)
+                changed = crud.save_kalk_history(
+                    db,
+                    offer_id,
+                    "kvantitativ",
+                    params_json,
+                    saved_by_user_id=st.session_state.get("current_user_id"),
                 )
-                st.toast("Kalkuláció mentve!")
+                if changed:
+                    crud.upsert_stage1_kalk_kvantitativ(db, offer_id, params_json)
+                    st.toast("Kalkuláció mentve!")
+                    st.rerun()
+                else:
+                    st.info(
+                        "Nem történt változás a paraméterezésben – mentés kihagyva."
+                    )
+
+    history = crud.get_kalk_history(db, offer_id, "kvantitativ")
+    if history:
+        with st.expander(f"📋 Kalkuláció-verziók ({len(history)} db)"):
+            labels = [
+                f"V{len(history) - i}  –  {h.saved_at.strftime('%Y-%m-%d %H:%M')}  –  "
+                f"{h.saved_by.nev if h.saved_by else '—'}"
+                for i, h in enumerate(history)
+            ]
+            selected_label = st.radio(
+                "Betöltendő verzió:",
+                labels,
+                index=0,
+                key=f"hist_radio_{offer_id}_kvanti",
+            )
+            if st.button(
+                "⬆️ Kiválasztott verzió betöltése",
+                key=f"hist_load_{offer_id}_kvanti",
+                disabled=not is_editable,
+                help="Betöltés után az aktuális paraméterek felülíródnak. "
+                "Ha meg akarod tartani, nyomj rá a Kalkuláció mentése gombra.",
+            ):
+                selected_idx = labels.index(selected_label)
+                st.session_state[state_key] = json.loads(
+                    history[selected_idx].params_json
+                )
+                st.toast(
+                    "Korábbi verzió betöltve – ellenőrizd, majd ments, ha megtartod!"
+                )
+                st.rerun()
