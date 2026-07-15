@@ -44,6 +44,7 @@ class Offer(Base):
     nyilvantarto_szam: Mapped[str] = mapped_column(
         String(20), unique=True, nullable=False
     )
+    projekt_neve: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     current_stage: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(
         String(50), default="folyamatban"
@@ -219,6 +220,115 @@ class Stage1KalkKvantitativ(Base):
     """
 
     __tablename__ = "stage1_kalk_kvantitativ"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1NyitooldalaHistory(Base):
+    """Nyitóoldal módosítási előzmények – mentés előtti állapot snapshot-ja."""
+
+    __tablename__ = "stage1_nyitooldal_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id"), nullable=False)
+    modified_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    modified_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    ugyfel_kategoria: Mapped[Optional[str]] = mapped_column(String(100))
+    kontakt: Mapped[Optional[str]] = mapped_column(String(100))
+    keretszerzodes: Mapped[Optional[str]] = mapped_column(String(50))
+    domain: Mapped[Optional[str]] = mapped_column(String(100))
+    uzletszerzo: Mapped[Optional[str]] = mapped_column(String(200))
+    elfogadas_eselye: Mapped[Optional[float]] = mapped_column(Float)
+    divizion: Mapped[Optional[str]] = mapped_column(String(100))
+    orszagok_szama: Mapped[Optional[int]] = mapped_column(Integer)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+    modified_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class Stage1KalkHistory(Base):
+    """Kalkuláció-verziók – minden eltérő mentéskor rögzíti az aktuális paramétereket."""
+
+    __tablename__ = "stage1_kalk_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id"), nullable=False)
+    calc_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # szemiotika | kvalitativ | kvantitativ
+    params_json: Mapped[str] = mapped_column(Text, nullable=False)
+    saved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    saved_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+
+    offer: Mapped["Offer"] = relationship("Offer")
+    saved_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class Stage1KalkTgi(Base):
+    """Szakasz 1 – TGI kalkuláció paraméterei (JSON-alapú tárolás)."""
+
+    __tablename__ = "stage1_kalk_tgi"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1KalkMasodelemzes(Base):
+    """Szakasz 1 – Másodelemzés kalkuláció paraméterei (JSON-alapú tárolás)."""
+
+    __tablename__ = "stage1_kalk_masodelemzes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1KalkTrening(Base):
+    """Szakasz 1 – Tréning kalkuláció paraméterei (JSON-alapú tárolás)."""
+
+    __tablename__ = "stage1_kalk_trening"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(
+        ForeignKey("offers.id"), unique=True, nullable=False
+    )
+
+    params_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    offer: Mapped["Offer"] = relationship("Offer")
+
+
+class Stage1KalkDesp(Base):
+    """Szakasz 1 – DESP/COCR/SUCL kalkuláció paraméterei (JSON-alapú tárolás)."""
+
+    __tablename__ = "stage1_kalk_desp"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     offer_id: Mapped[int] = mapped_column(
